@@ -1,2 +1,22 @@
-[workspace]
-members = ["sys_", "features"]
+[package]
+name = "fuwane-sys"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+extism = "0.3.0"
+serde = "1.0.159"
+tokio = { version = "1.27.0", features = ["sync"] }
+futures = "0.3.28"
+songbird = { version = "0.3.1", features = ["driver"] }
+# WebSocket Feature
+wav_io = { version = "0.1.8", optional = true }
+extism-runtime = "0.3.0"
+bitflags = "2.1.0"
+once_cell = "1.17.1"
+
+[features]
+default = []
+wave_service = ["dep:wav_io"]
