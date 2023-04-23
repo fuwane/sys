@@ -7,19 +7,19 @@ use extism_runtime::PluginIndex;
 
 use songbird::Call;
 
+pub mod utils;
+pub mod event;
 pub mod types;
 pub mod client;
 pub mod service;
 
-use service::{ Service, binding::{ WASM_FOUNDATION, DataFromService } };
-
-
-pub type ChannelId = u64;
+pub(crate) use event::{ Event, EVENT_CHANNEL };
+use service::{ binding::Event as BindingEvent, { Service, Event as ServiceEvent } };
 
 
 pub struct Manager<'a> {
     pub ctx: Context,
-    pub calls: HashMap<ChannelId, Call>,
+    pub calls: HashMap<u64, Call>,
     services: HashMap<PluginIndex, Service<'a>>,
 }
 
@@ -34,13 +34,17 @@ impl<'a> Manager<'a> {
     pub fn services(&self) -> &HashMap<PluginIndex, Service> { &self.services }
 
     pub async fn start(&mut self) {
-        let rx = WASM_FOUNDATION.rx.clone();
+        let rx = EVENT_CHANNEL.rx.clone();
         loop {
             let data = rx.lock().await.recv().await.unwrap();
             match data {
-                DataFromService::Play(data) => {
-                    self.calls.get_mut(&data.channel_id)
-                        .unwrap().play_source(data.input);
+                Event::Service(service_event) => match service_event {
+                    ServiceEvent::Binding(binding_event) => match binding_event{
+                        BindingEvent::Play(data) => {
+                            self.calls.get_mut(&data.channel_id)
+                                .unwrap().play_source(data.input);
+                        }
+                    }
                 }
             };
         };

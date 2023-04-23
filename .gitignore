@@ -1,6 +1,9 @@
 /target
 Cargo.lock
 
+ignore
+!ignore/README.md
+
 # OS
 .DS_Store
 

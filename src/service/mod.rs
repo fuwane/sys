@@ -2,12 +2,16 @@
 
 use extism::{ Context, Plugin };
 
-pub mod utils;
 pub mod config;
 pub(crate) mod binding;
 
 use config::Config;
-use binding::WASM_FOUNDATION;
+use binding::{ BRIDGE, Event as BindingEvent };
+
+
+pub enum Event {
+    Binding(BindingEvent)
+}
 
 
 pub struct Service<'a> {
@@ -18,7 +22,7 @@ pub struct Service<'a> {
 impl<'a> Service<'a> {
     pub fn new(ctx: &'a Context, config: Config, data: &[u8]) -> Self {
         Self { plugin: Plugin::new(
-            ctx, data, [&WASM_FOUNDATION.play],
+            ctx, data, BRIDGE.get_slice(),
             config.wasi
         ).unwrap(), config: config }
     }
