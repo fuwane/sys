@@ -1,5 +1,5 @@
 {
-	"name": "FuwaNe System Development Container",
+    "name": "FuwaNe System Development Container",
     "dockerFile": "Dockerfile",
 	"workspaceFolder": "/workspace",
 	"customizations": {
