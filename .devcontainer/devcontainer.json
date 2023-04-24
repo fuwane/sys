@@ -1,14 +1,14 @@
 {
     "name": "FuwaNe System Development Container",
     "dockerFile": "Dockerfile",
-	"workspaceFolder": "/workspace",
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"ms-pyright.pyright",
-				"ms-python.python",
-				"rust-lang.rust-analyzer"
-			]
-		}
-	}
+    "workspaceFolder": "/workspace",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-pyright.pyright",
+                "ms-python.python",
+                "rust-lang.rust-analyzer"
+            ]
+        }
+    }
 }
