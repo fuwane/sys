@@ -1,4 +1,4 @@
-FROM python:3.7.3-slim
+FROM python:latest-slim
 
 RUN pip3 install poetry && \
     pip3 install git+https://github.com/extism/cli
