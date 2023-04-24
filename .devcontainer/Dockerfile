@@ -1,4 +1,4 @@
-FROM python:latest-slim
+FROM gcr.io/distroless/python3-debian11:latest
 
 RUN pip3 install poetry && \
     pip3 install git+https://github.com/extism/cli
