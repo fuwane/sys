@@ -1,6 +1,6 @@
 {
 	"name": "FuwaNe System",
-	"service": "env",
+	"service": "app",
 	"dockerComposeFile": "docker-compose.yml",
 	"workspaceFolder": "/workspace",
 	"initializeCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y",
