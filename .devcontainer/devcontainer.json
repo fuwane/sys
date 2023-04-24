@@ -1,21 +1,14 @@
 {
 	"name": "FuwaNe System",
-	"service": "app",
-	"dockerComposeFile": "docker-compose.yml",
+    "dockerFile": "Dockerfile",
 	"workspaceFolder": "/workspace",
-	"initializeCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y",
-	"postStartCommand": "pip3 install poetry && pip3 install git+https://github.com/extism/cli",
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"ms-pyright.pyright",
-				"ms-python.python"
+				"ms-python.python",
+				"rust-lang.rust-analyzer"
 			]
-		}
-	},
-	"features": {
-		"ghcr.io/devcontainers/features/sshd:1": {
-			"version": "latest"
 		}
 	}
 }
