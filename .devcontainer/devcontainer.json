@@ -1,0 +1,20 @@
+{
+	"name": "FuwaNe System",
+	"service": "env",
+	"workspaceFolder": "/workspace",
+	"initializeCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y && pip3 install poetry && pip3 install git+https://github.com/extism/cli",
+	"postStartCommand": "echo \"Starting...\"",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-pyright.pyright",
+				"ms-python.python"
+			]
+		}
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/sshd:1": {
+			"version": "latest"
+		}
+	}
+}
