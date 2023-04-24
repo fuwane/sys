@@ -3,8 +3,8 @@
 	"service": "env",
 	"dockerComposeFile": "docker-compose.yml",
 	"workspaceFolder": "/workspace",
-	"initializeCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y && pip3 install poetry && pip3 install git+https://github.com/extism/cli",
-	"postStartCommand": "echo \"Starting...\"",
+	"initializeCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y",
+	"postStartCommand": "pip3 install poetry && pip3 install git+https://github.com/extism/cli",
 	"customizations": {
 		"vscode": {
 			"extensions": [
