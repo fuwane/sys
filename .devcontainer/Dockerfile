@@ -2,7 +2,7 @@ FROM python:3-slim
 
 # Prepare tools.
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends git curl nano vim
+RUN apt-get install -y --no-install-recommends gcc cmake git curl nano vim
 
 # Prepare dependencies.
 RUN pip3 install poetry; \
