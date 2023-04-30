@@ -13,6 +13,3 @@ once_cell = "1.17.1"
 anyhow = "1.0.70"
 serde = "1.0.160"
 bitflags = "2.2.1"
-
-[features]
-default = []
