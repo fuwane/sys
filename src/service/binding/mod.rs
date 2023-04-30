@@ -2,6 +2,7 @@
 
 use std::collections::{ HashMap, VecDeque };
 
+use anyhow::anyhow;
 use songbird::input::{ Input, Reader };
 
 use extism::{
@@ -9,28 +10,39 @@ use extism::{
 };
 
 use tokio::{ sync::{ Mutex as AioMutex }, spawn };
-use once_cell::sync::Lazy;
+use once_cell::sync::{ Lazy, OnceCell };
 
-use crate::{ Event as RootEvent, EVENT_CHANNEL };
+use crate::{ EVENT_CHANNEL, Event as RootEvent, InputData, event::CallContext };
 use super::Event as ServiceEvent;
 
 pub mod reader;
 
 
+/// 送信する音声チャンネルのID（`u64`）を`i64`型にした数値です。
+pub type ChannelIdI64 = i64;
+
+
+#[derive(Debug)]
 pub struct PlayData {
     pub channel_id: u64,
     pub input: Input
 }
 
 
+#[derive(Debug)]
 pub enum Event {
     Play(PlayData)
 }
 
 
-pub type AudioBuffer = AioMutex<HashMap<u64, VecDeque<Vec<u8>>>>;
-pub static AUDIO_BUFFER: Lazy<AudioBuffer> =
-    Lazy::new(|| AioMutex::new(HashMap::new()));
+#[derive(Default)]
+pub struct Sink {
+    pub buffer: VecDeque<Vec<u8>>,
+    pub length: usize
+}
+
+pub type Sinks = AioMutex<HashMap<u64, Sink>>;
+pub static SINKS: Lazy<Sinks> = Lazy::new(|| AioMutex::new(HashMap::new()));
 
 pub fn play(
     _plugin: &mut CurrentPlugin, inputs: &[Val],
@@ -51,6 +63,34 @@ pub fn play(
 }
 
 
+/// 音声データのバイナリをどう分割して送れば良いかを知るためのExtismプラグイン向けの関数です。
+/// 引数に`ChannelIdI64`を渡す必要があります。
+pub fn get_audio_frame_length(
+    _plugin: &mut CurrentPlugin, inputs: &[Val],
+    _outputs: &mut [Val], user_data: UserData
+) -> Result<(), ExtismError> {
+    let channel_id = inputs[0].unwrap_i64() as u64;
+    spawn(async move {
+        if let Some(sink) = SINKS.lock().await.get(&channel_id) {
+            if let Some(ctx) = CallContext::from_user_data(
+                user_data, "set_audio_frame_length",
+                InputData::Usize(sink.length)
+            ) {
+                EVENT_CHANNEL.tx.send(RootEvent::CallFunction(ctx)).await.unwrap();
+            };
+            Ok(())
+        } else { Err(anyhow!(format!(
+            "The channel with {} as its ID is not currently playing anything.",
+            channel_id
+        ))) }
+    });
+    Ok(())
+}
+
+
+/// 音声データを送信するためのExtismプラグイン向けの関数です。
+/// 送信するデータ（`Vec<u8>`）は、この関数を実行する前にExtismの変数にてチャンネルIDの文字列をキーとし、事前に配置をしてください。
+/// またプラグイン側は、この関数に`ChannelIdI64`を渡す必要があります。
 pub fn send_audio_data(
     plugin: &mut CurrentPlugin, inputs: &[Val],
     _outputs: &mut [Val], _user_data: UserData
@@ -59,30 +99,41 @@ pub fn send_audio_data(
     if let Some(data) = plugin.vars.get(&channel_id.to_string()) {
         let cloned = data.to_vec();
         spawn(async move {
-            let mut buffer = AUDIO_BUFFER.lock().await;
-            if !buffer.contains_key(&channel_id) {
-                buffer.insert(channel_id, VecDeque::new());
+            let mut sinks = SINKS.lock().await;
+            if !sinks.contains_key(&channel_id) {
+                sinks.insert(channel_id, Sink::default());
             };
-            buffer.get_mut(&channel_id).unwrap().push_back(cloned);
+            if let Some(sink) = sinks.get_mut(&channel_id) {
+                sink.buffer.push_back(cloned);
+            };
         });
     };
     Ok(())
 }
 
 
-
 pub struct WasmBridge {
-    pub play: Function, pub send_audio_data: Function
+    pub plugin_id: OnceCell<i32>,
+    pub play: Function,
+    pub send_audio_data: Function
 }
 impl WasmBridge {
+    pub fn new() -> Self {
+        let plugin_id = OnceCell::new();
+        Self {
+            plugin_id: plugin_id.clone(),
+            play: Function::new(
+                "play", [ValType::I64, ValType::I32],
+                [], Some(UserData::new(plugin_id.clone())), play
+            ),
+            send_audio_data: Function::new(
+                "send_audio_data", [ValType::I64],
+                [], Some(UserData::new(plugin_id)), send_audio_data
+            )
+        }
+    }
+
     pub fn get_slice(&self) -> [&Function; 2] {
         [&self.play, &self.send_audio_data]
     }
 }
-pub static BRIDGE: Lazy<WasmBridge> = Lazy::new(|| WasmBridge {
-    play: Function::new("play", [ValType::I64, ValType::I32], [], None, play),
-    send_audio_data: Function::new(
-        "send_audio_data", [ValType::I64],
-        [], None, send_audio_data
-    )
-});

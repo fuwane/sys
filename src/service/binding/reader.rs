@@ -6,7 +6,7 @@ use std::{ io::{
 
 use songbird::input::reader::MediaSource;
 
-use super::AUDIO_BUFFER;
+use super::SINKS;
 
 
 pub struct WasmAudioReader {
@@ -20,11 +20,15 @@ impl MediaSource for WasmAudioReader {
 
 impl Read for WasmAudioReader {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        if let Some(deque) = AUDIO_BUFFER.blocking_lock().get_mut(&self.channel_id) {
-            if let Some(data) = deque.pop_front() {
-                for (i, v) in data.iter().enumerate() {
-                    buf[i] = *v;
+        if let Some(sink) = SINKS.blocking_lock().get_mut(&self.channel_id) {
+            if sink.length == buf.len() {
+                if let Some(data) = sink.buffer.pop_front() {
+                    for (i, v) in data.iter().enumerate() {
+                        buf[i] = *v;
+                    };
                 };
+            } else {
+                sink.length = buf.len();
             };
         };
         Ok(0)
