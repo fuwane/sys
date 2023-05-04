@@ -9,3 +9,6 @@ ignore
 
 # Editor
 *.*-*
+
+# User
+/.cargo

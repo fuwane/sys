@@ -1,11 +1,11 @@
 //! FuwaNe Utils - Event
 
-use std::sync::Arc;
-
-use tokio::sync::{ mpsc::{ Sender, Receiver, channel }, Mutex as AioMutex };
 use once_cell::sync::Lazy;
 
 use extism::UserData;
+
+pub use fuwane_foundation::communication::Channel as EventChannel;
+use fuwane_foundation::communication::create_lazy_channel;
 
 use super::service::Event as ServiceEvent;
 
@@ -46,14 +46,4 @@ pub enum Event<'a> {
 }
 
 
-pub struct EventChannel<'a> {
-    pub tx: Sender<Event<'a>>,
-    pub rx: Arc<AioMutex<Receiver<Event<'a>>>>
-}
-
-
-pub static EVENT_CHANNEL: Lazy<EventChannel> = Lazy::new(|| {
-    let (tx, rx) = channel(128); EventChannel {
-        tx: tx, rx: Arc::new(AioMutex::new(rx))
-    }
-});
+pub static EVENT_CHANNEL: Lazy<EventChannel<Event>> = Lazy::new(create_lazy_channel);

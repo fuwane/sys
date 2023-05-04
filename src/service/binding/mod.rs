@@ -2,7 +2,6 @@
 
 use std::collections::{ HashMap, VecDeque };
 
-use anyhow::anyhow;
 use songbird::input::{ Input, Reader };
 
 use extism::{
@@ -12,7 +11,7 @@ use extism::{
 use tokio::{ sync::{ Mutex as AioMutex }, spawn };
 use once_cell::sync::{ Lazy, OnceCell };
 
-use crate::{ EVENT_CHANNEL, Event as RootEvent, InputData, event::CallContext };
+use crate::{ EVENT_CHANNEL, Event as RootEvent };
 use super::Event as ServiceEvent;
 
 pub mod reader;
@@ -59,31 +58,6 @@ pub fn play(
             )
         )})))
     ));
-    Ok(())
-}
-
-
-/// 音声データのバイナリをどう分割して送れば良いかを知るためのExtismプラグイン向けの関数です。
-/// 引数に`ChannelIdI64`を渡す必要があります。
-pub fn get_audio_frame_length(
-    _plugin: &mut CurrentPlugin, inputs: &[Val],
-    _outputs: &mut [Val], user_data: UserData
-) -> Result<(), ExtismError> {
-    let channel_id = inputs[0].unwrap_i64() as u64;
-    spawn(async move {
-        if let Some(sink) = SINKS.lock().await.get(&channel_id) {
-            if let Some(ctx) = CallContext::from_user_data(
-                user_data, "set_audio_frame_length",
-                InputData::Usize(sink.length)
-            ) {
-                EVENT_CHANNEL.tx.send(RootEvent::CallFunction(ctx)).await.unwrap();
-            };
-            Ok(())
-        } else { Err(anyhow!(format!(
-            "The channel with {} as its ID is not currently playing anything.",
-            channel_id
-        ))) }
-    });
     Ok(())
 }
 
