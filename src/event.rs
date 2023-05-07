@@ -1,49 +1,64 @@
 //! FuwaNe Utils - Event
 
-use once_cell::sync::Lazy;
+use anyhow::Context as AHContext;
 
-use extism::UserData;
+use extism::Error;
 
-pub use fuwane_foundation::communication::Channel as EventChannel;
-use fuwane_foundation::communication::create_lazy_channel;
+pub use fuwane_foundation::communication::Channel as OriginalEventChannel;
 
-use super::service::Event as ServiceEvent;
+use super::{ Manager, service::Event as ServiceEvent };
 
 
+/// The types for `FunctionContext`.
 #[derive(Debug)]
 pub enum InputData<'a> {
     Raw(&'a [u8]),
     Usize(usize)
 }
 
+/// The data struct to call a plugin function.
 #[derive(Debug)]
-pub struct CallContext<'a> {
-    pub plugin_id: i32,
+pub struct FunctionContext<'a> {
+    pub service_id: u32,
     pub name: &'a str,
     pub input: InputData<'a>
 }
 
-impl<'a> CallContext<'a> {
-    pub fn from_user_data(
-        user_data: UserData,
-        name: &'a str,
-        input: InputData<'a>
-    ) -> Option<Self> {
-        if let Some(any) = user_data.any() {
-            Some(Self {
-                plugin_id: *any.downcast_ref().unwrap(),
-                name: name.as_ref(), input: input
-            })
-        } else { None }
+
+/// The events.
+#[derive(Debug)]
+pub enum Event<'a> {
+    Service(ServiceEvent),
+    CallFunction(FunctionContext<'a>)
+}
+
+
+const RAW_USIZE_DUMMY: [u8;8] = [0;8];
+impl<'a> Event<'a> {
+    pub fn handle<'b>(self, manager: &mut Manager<'b>) -> Result<(), Error> {
+        match self {
+            Event::Service(service_event) => service_event.handle(manager),
+            Event::CallFunction(ctx) => {
+                if let Some(s) = manager.services.get_mut(&ctx.service_id) {
+                    let temp = if let InputData::Usize(v) = ctx.input
+                        { v.to_ne_bytes() } else { RAW_USIZE_DUMMY };
+                    s.plugin.call(
+                        ctx.name, match ctx.input {
+                            InputData::Raw(r) => r,
+                            InputData::Usize(_) => &temp
+                        }
+                    ).with_context(|| format!(
+                        "Failed to call function {} in service {}.",
+                        ctx.name, ctx.service_id
+                    ))?;
+                };
+                Ok(())
+            }
+        }
     }
 }
 
 
-#[derive(Debug)]
-pub enum Event<'a> {
-    Service(ServiceEvent),
-    CallFunction(CallContext<'a>)
-}
-
-
-pub static EVENT_CHANNEL: Lazy<EventChannel<Event>> = Lazy::new(create_lazy_channel);
+/// It is container of channel for functions to be called from plugin.
+/// It can be used to dispatch event to somewhere.
+pub type EventChannel<'a> = OriginalEventChannel<Event<'a>>;

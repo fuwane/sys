@@ -6,36 +6,28 @@ use std::{ io::{
 
 use songbird::input::reader::MediaSource;
 
-use super::SINKS;
+use crate::MANAGERS;
 
 
-pub struct WasmAudioReader {
+pub struct WasmAudioReader<'a> {
+    pub manager_id: u32,
     pub channel_id: u64,
+    pub plugin_vars: &'a std::collections::BTreeMap<String, Vec<u8>>
 }
 
-impl MediaSource for WasmAudioReader {
+impl<'a> MediaSource for WasmAudioReader<'a> {
     fn byte_len(&self) -> Option<u64> { None }
     fn is_seekable(&self) -> bool { false }
 }
 
-impl Read for WasmAudioReader {
-    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        if let Some(sink) = SINKS.blocking_lock().get_mut(&self.channel_id) {
-            if sink.length == buf.len() {
-                if let Some(data) = sink.buffer.pop_front() {
-                    for (i, v) in data.iter().enumerate() {
-                        buf[i] = *v;
-                    };
-                };
-            } else {
-                sink.length = buf.len();
-            };
-        };
+impl<'a> Read for WasmAudioReader<'a> {
+    fn read(&mut self, _buf: &mut [u8]) -> IoResult<usize> {
+        println!("WARNING: Couldn't find manager."); // TODO: Log it.
         Ok(0)
     }
 }
 
-impl Seek for WasmAudioReader {
+impl<'a> Seek for WasmAudioReader<'a> {
     fn seek(&mut self, _pos: SeekFrom) -> IoResult<u64> {
         // TODO: Support it.
         Err(IoError::new(ErrorKind::Unsupported, "Seeking is not supported yet."))

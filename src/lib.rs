@@ -1,11 +1,16 @@
 //! FuwaNe System
 
-use std::collections::HashMap;
+use std::{ collections::{ HashMap, BTreeSet }, hash::{ Hash, Hasher } };
 
-use anyhow::{ Context as AHContext, Result as AHResult };
-use extism::{ Context, Plugin };
+use tokio::{ sync::RwLock as AioRwLock, runtime::Handle };
+use pollster::FutureExt as _;
+use once_cell::sync::Lazy;
+
+use extism::{ Context, Manifest, Error };
 
 use songbird::Call;
+
+use fuwane_foundation::communication::create_lazy_channel;
 
 pub mod utils;
 pub mod event;
@@ -13,91 +18,161 @@ pub mod types;
 pub mod client;
 pub mod service;
 
-pub(crate) use event::{ Event, EVENT_CHANNEL, InputData };
-use service::{
-    binding::{ Event as BindingEvent, WasmBridge },
-    config::Config, { Service, Event as ServiceEvent }
-};
+pub(crate) use event::EventChannel;
+use service::{ binding::Channel, config::Config, Service };
+
+
+#[derive(Default)]
+pub struct IdManager(AioRwLock<BTreeSet<u32>>);
+impl IdManager {
+    pub async fn acquire_async(&mut self) -> u32 {
+        let mut ids = self.0.write().await;
+        let id = {
+            let mut next_iter = ids.iter();
+            if let Some(first) = next_iter.next() {
+                if *first > 0 { return first - 1; };
+            } else { return 0; };
+            let mut last = 0;
+            for zipped in ids.iter().zip(next_iter) {
+                if zipped.1 - zipped.0 > 1 {
+                    return zipped.1 + 1;
+                };
+                last = *zipped.1;
+            };
+            if last == 0 { last } else { last + 1 }
+        };
+        ids.insert(id);
+        id
+    }
+
+    pub fn acquire(&mut self) -> u32 {
+        self.acquire_async().block_on()
+    }
+
+    pub async fn release_async(&mut self, id: &u32) {
+        self.0.write().await.remove(id);
+    }
+
+    pub fn release(&mut self, id: &u32) {
+        self.release_async(id).block_on();
+    }
+}
+
+
+pub struct Shared<'a> {
+    pub channels: HashMap<u64, Channel>,
+    pub events: EventChannel<'a>
+}
+
+impl<'a> Shared<'a> {
+    pub fn calls(&self) -> &HashMap<u64, Channel> { &self.channels }
+
+    pub fn add_call(&mut self, channel_id: u64, call: Call) {
+        self.channels.insert(channel_id, Channel::new(channel_id, call));
+    }
+
+    pub fn remove_call(&mut self, id: &u64) -> Option<Channel> {
+        self.channels.remove(id)
+    }
+}
+
+
+#[derive(Default)]
+pub struct ManagerPool<'a> {
+    ids: IdManager,
+    shared: HashMap<u32, Shared<'a>>
+}
+
+pub static MANAGERS: Lazy<AioRwLock<ManagerPool>> = Lazy::new(
+    || AioRwLock::new(ManagerPool::default()));
 
 
 pub struct Manager<'a> {
+    pub(crate) id: u32,
     pub ctx: Context,
-    pub calls: HashMap<u64, Call>,
-    services: HashMap<i32, Service<'a>>,
+    service_id_manager: IdManager,
+    services: HashMap<u32, Service<'a>>,
+}
+
+impl<'a> PartialEq for Manager<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl<'a> Eq for Manager<'a> {}
+
+impl<'a> Drop for Manager<'a> {
+    fn drop(&mut self) {
+        if let Ok(hwnd) = Handle::try_current() {
+            let id = self.id;
+            hwnd.spawn(async move {
+                let mut managers = MANAGERS.write().await;
+                managers.ids.release_async(&id).await;
+                managers.shared.remove(&id);
+            });
+        };
+        // TODO: この場合、適切に破棄できないことに関して警告を出す。
+        let mut managers = MANAGERS.blocking_write();
+        managers.ids.release(&self.id);
+        managers.shared.remove(&self.id);
+    }
+}
+
+impl<'a> Hash for Manager<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
 }
 
 impl<'a> Manager<'a> {
-    pub fn new() -> Manager<'a> {
+    pub async fn new_async() -> Manager<'a> {
+        let mut managers = MANAGERS.write().await;
+        let id = managers.ids.acquire_async().await;
+        managers.shared.insert(id, Shared {
+            channels: HashMap::new(),
+            events: create_lazy_channel()
+        });
         Self {
-            ctx: Context::new(), calls: HashMap::new(),
+            id, ctx: Context::new(),
+            service_id_manager: IdManager::default(),
             services: HashMap::new()
         }
     }
 
-    pub fn services(&self) -> &HashMap<i32, Service> { &self.services }
-
-    pub fn add_service(&'a mut self, config: Config, data: &[u8]) {
-        let wasm_bridge = WasmBridge::new();
-        let service = Service {
-            plugin: Plugin::new(&self.ctx, data,[], false).unwrap(),
-            config: config, wasm_bridge: wasm_bridge
-        };
-        let key = service.plugin.as_i32();
-        self.services.insert(key, service);
-        // 関数を設定。
-        let s = self.services.get_mut(&key).unwrap();
-        s.wasm_bridge.plugin_id.set(s.plugin.as_i32()).unwrap();
-        let functions = s.wasm_bridge.get_slice();
-        let wasi = s.config.wasi;
-        s.plugin.update(data, functions, wasi).unwrap();
+    pub fn new() -> Manager<'a> {
+        Self::new_async().block_on()
     }
 
-    pub fn remove_service(&mut self, id: i32) -> Option<Service> {
+    pub fn id(&self) -> &u32 { &self.id }
+
+    pub fn services(&'a self) -> &HashMap<u32, Service> { &self.services }
+
+    pub async fn add_service_async(&'a mut self, manifest: &Manifest, config: Config) {
+        let id = self.service_id_manager.acquire_async().await;
+        let service = Service::new(id, self.id, &self.ctx, manifest, config);
+        self.services.insert(id, service);
+    }
+
+    pub fn add_service(&'a mut self, config: Config, manifest: &Manifest) {
+        self.add_service_async(manifest, config).block_on();
+    }
+
+    pub fn remove_service(&'a mut self, id: u32) -> Option<Service> {
         self.services.remove(&id)
     }
 
-    const RAW_DUMMY: [u8;8] = [0;8];
-    async fn handle_event<'b>(&'b mut self, event: Event<'b>) -> AHResult<()> {
-        match event {
-            Event::Service(service_event) => match service_event {
-                ServiceEvent::Binding(binding_event) => match binding_event{
-                    BindingEvent::Play(data) => {
-                        self.calls.get_mut(&data.channel_id).with_context(|| format!(
-                            "No audio connection is made to the channel with ID {}.",
-                            data.channel_id
-                        ))?.play_source(data.input);
-                        Ok(())
-                    }
-                }
-            },
-            Event::CallFunction(ctx) => {
-                if let Some(s) = self.services.get_mut(&ctx.plugin_id) {
-                    let temp = if let InputData::Usize(v) = ctx.input
-                        { v.to_ne_bytes() } else { Self::RAW_DUMMY };
-                    s.plugin.call(ctx.name, match ctx.input {
-                        InputData::Raw(r) => r,
-                        InputData::Usize(_) => &temp
-                    }).with_context(|| format!(
-                        "Failed to call function {} in plugin {}.",
-                        ctx.name, ctx.plugin_id
-                    ))?;
-                };
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn start(&mut self) -> AHResult<()> {
-        let rx = EVENT_CHANNEL.rx.clone();
+    pub async fn start(&mut self) -> Result<(), Error> {
+        let rx = MANAGERS.write().await.shared
+            .get(&self.id).unwrap().events.rx.clone();
         loop {
-            if let Err(e) = self.handle_event(
-                rx.lock().await.recv().await.unwrap()
-            ).await {
-                if cfg!(debug_assertions) {
-                    return Err(e);
-                } else {
-                    // TODO: ここをログ出力に変える。
-                    println!("WARNING: {}", e.to_string());
+            if let Some(event) = rx.lock().await.recv().await {
+                if let Err(e) = event.handle(self) {
+                    if cfg!(debug_assertions) {
+                        return Err(e);
+                    } else {
+                        // TODO: ここをログ出力に変える。
+                        println!("WARNING: {}", e.to_string());
+                    };
                 };
             };
         };
