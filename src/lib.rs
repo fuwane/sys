@@ -1,6 +1,6 @@
 //! FuwaNe System
 
-use std::{ collections::{ HashMap, BTreeSet }, hash::{ Hash, Hasher } };
+use std::{ collections::{ HashMap, BTreeSet, VecDeque }, hash::{ Hash, Hasher } };
 
 use tokio::{ sync::RwLock as AioRwLock, runtime::Handle };
 use pollster::FutureExt as _;
@@ -61,7 +61,7 @@ impl IdManager {
 
 pub struct Shared<'a> {
     pub channels: HashMap<u64, Channel>,
-    pub events: EventChannel<'a>
+    pub events: EventChannel<'a>,
 }
 
 impl<'a> Shared<'a> {

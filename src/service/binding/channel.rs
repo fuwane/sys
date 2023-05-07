@@ -1,5 +1,9 @@
 //! FuwaNe System - Channel
 
+use std::collections::VecDeque;
+
+use tokio::sync::OnceCell as AioOnceCell;
+
 use extism::CurrentPlugin;
 use songbird::{ Call, input::Input, tracks::TrackHandle };
 
@@ -26,7 +30,10 @@ impl ContextManager {
 }
 
 
-pub struct BufferManager { pub(crate) key: String }
+pub struct BufferManager {
+    pub(crate) key: String,
+    pub(crate) sink: AioOnceCell<Vec<u8>>
+}
 
 impl BufferManager {
     pub fn get<'a>(&self, plugin: &'a CurrentPlugin) -> Option<&'a Vec<u8>> {
@@ -53,7 +60,10 @@ impl Channel {
         Self {
             call: call, id: id, id_i64: id as _,
             ctx: ContextManager { key: format!("{}c", id_string) },
-            buffer: BufferManager { key: format!("{}b", id_string) },
+            buffer: BufferManager {
+                key: format!("{}b", id_string),
+                queue: VecDeque::with_capacity(3)
+            },
             tracks: Vec::new()
         }
     }

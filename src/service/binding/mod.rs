@@ -20,6 +20,7 @@ pub use channel::Channel;
 
 // ここからイベント関連。
 
+
 /// 送信する音声チャンネルのID（`u64`）を`i64`型にした数値です。
 pub type ChannelIdI64 = i64;
 
@@ -54,19 +55,32 @@ pub fn play(
     _outputs: &mut [Val], _user_data: UserData
 ) -> Result<(), Error> {
     // 再生を行う。（実際の音源は一度で読み込まずちょっとずつ読み込まれる。）
-    let manager_id = inputs[1].unwrap_i32() as u32;
+    let manager_id = inputs[0].unwrap_i32() as u32;
     let channel_id = inputs[1].unwrap_i64() as u64;
     let is_stereo = inputs[2].unwrap_i32() > 0;
     let a = &_plugin.vars;
     spawn(async move {
-        if let Some(channel) = MANAGERS.write().await.shared
+        if let Some(channel) = MANAGERS..await.shared
                 .get_mut(&manager_id).unwrap().channels.get_mut(&channel_id) {
             channel.play(Input::float_pcm(
-                is_stereo, Reader::Extension(
-                    WasmAudioReader { manager_id, channel_id, plugin_vars: a }
-                )
+                is_stereo, Reader::Extension(Box::new(
+                    WasmAudioReader { manager_id, channel_id }
+                ))
             ));
         } else { println!("{}", make_cnf_text(channel_id)); }; // TODO: Log it.
+    });
+    Ok(())
+}
+
+
+pub fn send_audio_frame(
+    plugin: &mut CurrentPlugin, inputs: &[Val],
+    outputs: &mut [Val], _user_data: UserData
+) -> Result<(), Error> {
+    let manager_id = inputs[0].unwrap_i32() as u32;
+    let channel_id = inputs[1].unwrap_i64() as u64;
+    spawn(async move {
+        if let Some(channel) = MANAGERS.write().await
     });
     Ok(())
 }
