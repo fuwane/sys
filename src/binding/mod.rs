@@ -1,6 +1,5 @@
 use std::{ collections::VecDeque, sync::Arc };
 
-use tokio::spawn;
 use anyhow::Context;
 
 use songbird::input::{ Input, Reader };
@@ -47,20 +46,23 @@ fn make_cnf_text(channel_id: u64) -> String {
 }
 
 
-pub type Sink = Arc<VecDeque<[u8;STEREO_FRAME_BYTE_SIZE]>>;
+pub type Sink = Arc<VecDeque<Vec<u8>>>;
 pub fn play(
     _plugin: &mut CurrentPlugin, inputs: &[Val],
-    _outputs: &mut [Val], mut user_data: UserData
-) -> Result<u128, Error> {
+    outputs: &mut [Val], mut user_data: UserData
+) -> Result<(), Error> {
     let channel_id = inputs[0].unwrap_i64() as u64;
     let is_stereo = inputs[1].unwrap_i32() > 0;
     // チャンネルを取得する。
     let sink = Arc::new(VecDeque::new());
     // 再生を開始する。
     let channel = get_mut_channel(get_mut_shared_space(&mut user_data), channel_id)?;
-    Ok(channel.play(sink.clone(), Input::float_pcm(is_stereo, Reader::Extension(
-        Box::new(reader::WasmAudioReader { channel_id, sink })
-    ))))
+    outputs[0] = Val::V128(channel.play(Input::float_pcm(
+        is_stereo, Reader::Extension(Box::new(
+            reader::WasmAudioReader { channel_id, sink: sink.clone() }
+        ))
+    ), sink));
+    Ok(())
 }
 
 pub fn send_audio_frame(
@@ -70,8 +72,8 @@ pub fn send_audio_frame(
     let channel_id = inputs[0].unwrap_i64() as u64;
     let track_id = inputs[1].unwrap_v128();
     let channel = get_mut_channel(get_mut_shared_space(&mut user_data), channel_id)?;
-    let track = channel.core.tracks.get(&track_id).unwrap();
-    track.sink.push_back(plugin.vars.get(track.sink.).unwrap().as_slice());
+    let track = channel.core.tracks.get_mut(&track_id).unwrap();
+    track.sink.push_back(plugin.vars.remove(&track.buffer_id).unwrap());
     Ok(())
 }
 

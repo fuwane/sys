@@ -1,4 +1,4 @@
-use std::{ sync::Arc, collections::{ HashMap, VecDeque } };
+use std::collections::HashMap;
 
 use songbird::{ Call, input::Input, tracks::TrackHandle };
 
@@ -18,8 +18,10 @@ pub struct TrackData {
     pub buffer_id: String
 }
 impl TrackData {
-    pub fn new(channel_id: &str, handle: TrackHandle) -> Self {
-        Self { handle, sink: Arc::new(VecDeque::new()), buffer_id:  }
+    pub fn new(channel_id: u64, handle: TrackHandle, sink: Sink) -> Self {
+        Self { handle, sink, buffer_id: format!(
+            "{}t,{}", channel_id, handle.uuid()
+        ) }
     }
 }
 
@@ -53,7 +55,7 @@ impl Channel {
     pub fn play(&mut self, source: Input, sink: Sink) -> u128 {
         let handle = self.core.call.play_source(source);
         let id = handle.uuid().as_u128();
-        self.core.tracks.insert(id, TrackData { handle, sink });
+        self.core.tracks.insert(id, TrackData::new(self.id.u64, handle, sink));
         id
     }
 }
