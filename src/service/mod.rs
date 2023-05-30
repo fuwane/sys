@@ -1,50 +1,23 @@
-//! FuwaNe - Service
+use std::sync::Arc;
 
-use extism::{ Plugin, Context, Manifest, Error };
-use serde_json::to_vec;
+use extism::{ Plugin, Manifest, Context  };
 
-use fuwane_foundation::binding::PluginData;
-
-pub mod config;
-pub mod binding;
-
-use crate::Manager;
-use config::Config;
-use binding::{ Event as BindingEvent, FUNCTIONS };
-
-
-#[derive(Debug)]
-pub enum Event {
-    Binding(BindingEvent)
-}
-
-impl Event {
-    pub fn handle<'a>(self, manager: &mut Manager<'a>) -> Result<(), Error> {
-        match self {
-            Event::Binding(binding_event) => binding_event.handle(manager)
-        }
-    }
-}
+use crate::{ SharedSpace, binding::make_functions };
 
 
 pub struct Service<'a> {
-    pub id: u32,
-    pub config: Config,
-    pub plugin: Plugin<'a>,
+    pub name: String,
+    plugin: Plugin<'a>
 }
 
 impl<'a> Service<'a> {
     pub fn new(
-        id: u32, manager_id: u32,
-        ctx: &'a Context, manifest: &Manifest, config: Config
+        name: String, ctx: &'a Context,
+        shared_space: Arc<SharedSpace>,
+        manifest: &Manifest, wasi: bool
     ) -> Self {
-        let mut s = Self {
-            id, config, plugin: Plugin::new_with_manifest(
-                ctx, manifest, FUNCTIONS.iter(), false).unwrap()
-        };
-        s.plugin.call("setup", to_vec(
-            &PluginData { manager_id, service_id: id }
-        ).unwrap()).unwrap();
-        s
+        Self { name: name, plugin: Plugin::new_with_manifest(
+            ctx, manifest, make_functions(shared_space), wasi
+        ).unwrap() }
     }
 }

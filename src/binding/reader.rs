@@ -1,17 +1,16 @@
-//! FuwaNe Service Binding - Reader
-
 use std::{ io::{
-    Result as IoResult, Error as IoError, ErrorKind, Read, Seek, SeekFrom
+    Result as IoResult, Error as IoError, ErrorKind,
+    Read, Seek, SeekFrom
 } };
 
 use songbird::input::reader::MediaSource;
 
-use crate::MANAGERS;
+use super::Sink;
 
 
 pub struct WasmAudioReader {
-    pub manager_id: u32,
-    pub channel_id: u64
+    pub(crate) channel_id: u64,
+    pub sink: Sink
 }
 
 impl MediaSource for WasmAudioReader {
