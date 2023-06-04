@@ -21,3 +21,15 @@ impl ContextManager {
         plugin.vars.insert(self.key.clone(), to_vec(&ctx)?); Ok(())
     }
 }
+
+impl From<String> for ContextManager {
+    fn from(channel_id: String) -> Self {
+        Self { key: format!("{}c", channel_id) }
+    }
+}
+
+impl From<u64> for ContextManager {
+    fn from(channel_id: u64) -> Self {
+        Self { key: format!("{}c", channel_id) }
+    }
+}

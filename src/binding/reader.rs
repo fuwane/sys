@@ -5,12 +5,12 @@ use std::{ io::{
 
 use songbird::input::reader::MediaSource;
 
-use super::Sink;
+use super::channel::AudioReceiver;
 
 
 pub struct WasmAudioReader {
     pub(crate) channel_id: u64,
-    pub sink: Sink
+    pub receiver: AudioReceiver
 }
 
 impl MediaSource for WasmAudioReader {
@@ -19,9 +19,19 @@ impl MediaSource for WasmAudioReader {
 }
 
 impl Read for WasmAudioReader {
-    fn read(&mut self, _buf: &mut [u8]) -> IoResult<usize> {
-        println!("WARNING: Couldn't find manager."); // TODO: Log it.
-        Ok(0)
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        Ok(if let Some(frame) = self.receiver.blocking_write().blocking_recv() {
+            // TODO: Log it.
+            if frame.len() > buf.len() {
+                println!("WARNING: Frame size is not valid.");
+                0
+            } else {
+                for (i, value) in frame.iter().enumerate() {
+                    buf[i] = *value;
+                };
+                buf.len()
+            }
+        } else { 0 })
     }
 }
 
@@ -30,4 +40,8 @@ impl Seek for WasmAudioReader {
         // TODO: Support it.
         Err(IoError::new(ErrorKind::Unsupported, "Seeking is not supported yet."))
     }
+}
+
+impl WasmAudioReader {
+    pub fn channel_id(&self) -> &u64 { &self.channel_id }
 }

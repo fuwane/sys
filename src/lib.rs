@@ -3,22 +3,13 @@ use std::{ collections::HashMap, sync::Arc };
 use extism::{ Context, Manifest };
 
 pub mod service;
-pub mod channel;
 pub mod binding;
 
-pub use channel::Channel;
 pub use service::Service;
+pub use binding::{ Channel, SharedSpace };
 
 
 pub struct OpenSpace;
-#[derive(Default)]
-pub struct SharedSpace {
-    pub channels: HashMap<u64, Channel>
-}
-
-impl SharedSpace {
-    pub fn channels(&self) -> &HashMap<u64, Channel> { &self.channels }
-}
 
 
 pub struct GlobalSpace {

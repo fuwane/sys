@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use extism::{ Plugin, Manifest, Context  };
 
-use crate::{ SharedSpace, binding::make_functions };
+use crate::binding::{ SharedSpace, make_functions };
 
 
 pub struct Service<'a> {
@@ -20,4 +20,6 @@ impl<'a> Service<'a> {
             ctx, manifest, make_functions(shared_space), wasi
         ).unwrap() }
     }
+
+    pub fn plugin(&self) -> &Plugin<'a> { &self.plugin }
 }
