@@ -61,15 +61,27 @@ pub fn play(
 ) -> Result<(), Error> {
     let channel_id = inputs[0].unwrap_i64() as u64;
     let is_stereo = inputs[1].unwrap_i32() > 0;
+
     // チャンネルを取得する。
     let channel = get_mut_channel(get_mut_shared_space(&mut user_data), channel_id)?;
     let aampsc = channel.acquire();
+
     // 再生を開始する。
-    outputs[0] = Val::V128(channel.play(Input::float_pcm(
+    // NOTE: play`が返すトラックIDはv128だが、返り値をv128の別の表現としてi64のペアとしているのは理由がある。
+    // 現在、v128の型をRustのexternブロックで使用することができない。
+    // Extismはプラグイン側のホスト関数の定義時にexternブロックを使用するため、ここで返り値をV128としてプラグイン側の定義でv128の型を使用すると、前述のことからエラーが発生する。
+    // そのため、現在は`Val::V128`ではなく、i64のペアを返り値とする。
+    // 次のIssueが解決次第、ここはv128に変更をする：https://github.com/rust-lang/rust/issues/27731
+    let id_raw = channel.play(Input::float_pcm(
         is_stereo, Reader::Extension(Box::new(reader::WasmAudioReader {
             channel_id, receiver: aampsc.0.1.clone()
         }))
-    ), &aampsc));
+    ), &aampsc).to_be_bytes();
+
+    // 
+    outputs[0] = Val::I64(i64::from_be_bytes((&id_raw[64..]).try_into().unwrap()));
+    outputs[1] = Val::I64(i64::from_be_bytes((&id_raw[..64]).try_into().unwrap()));
+
     Ok(())
 }
 
@@ -91,7 +103,7 @@ pub fn send_audio_frame(
 
 pub fn make_functions(shared_space: Arc<SharedSpace>) -> [Function;1] { [
     Function::new(
-        "play", [ValType::I64, ValType::I32], [ValType::V128],
+        "play", [ValType::I64, ValType::I32], [ValType::I64, ValType::I64],
         Some(UserData::new(shared_space)), play
     ),
 ] }
