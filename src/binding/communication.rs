@@ -16,7 +16,8 @@ impl ContextManager {
     }
 
     pub fn set(
-        &self, plugin: &mut CurrentPlugin, ctx: Context
+        &self, plugin: &mut CurrentPlugin,
+        ctx: Context
     ) -> Result<(), Error> {
         plugin.vars.insert(self.key.clone(), to_vec(&ctx)?); Ok(())
     }
