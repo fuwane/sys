@@ -78,9 +78,9 @@ pub fn play(
         }))
     ), &aampsc).to_be_bytes();
 
-    // 
     outputs[0] = Val::I64(i64::from_be_bytes((&id_raw[64..]).try_into().unwrap()));
     outputs[1] = Val::I64(i64::from_be_bytes((&id_raw[..64]).try_into().unwrap()));
+    
 
     Ok(())
 }
