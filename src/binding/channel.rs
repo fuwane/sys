@@ -1,5 +1,6 @@
 use std::{ collections::HashMap, sync::{ Arc, atomic::{ Ordering, AtomicBool } } };
 
+use fuwane_foundation::constants::STEREO_FRAME_BYTE_SIZE;
 use tokio::sync::{ RwLock, mpsc::{ channel, Sender, Receiver } };
 
 use songbird::{ Call, input::Input, tracks::TrackHandle };
@@ -8,8 +9,9 @@ use super::{ communication::ContextManager };
 
 
 pub type IsMPSCReleased = Arc<AtomicBool>;
-pub type AudioSender = Sender<Vec<u8>>;
-pub type AudioReceiver = Arc<RwLock<Receiver<Vec<u8>>>>;
+pub type Frame = [u8;STEREO_FRAME_BYTE_SIZE];
+pub type AudioSender = Sender<Frame>;
+pub type AudioReceiver = Arc<RwLock<Receiver<Frame>>>;
 pub type AudioMPSC = (AudioSender, AudioReceiver);
 pub type AcquiredAudioMPSC = (AudioMPSC, IsMPSCReleased);
 
@@ -22,25 +24,15 @@ impl From<u64> for Id {
 }
 
 pub struct TrackData {
+    pub channel_id: u64,
     pub handle: TrackHandle,
     pub sender: AudioSender,
-    released: IsMPSCReleased,
-    pub buffer_id: String
-}
-impl TrackData {
-    pub fn new(
-        channel_id: u64, handle: TrackHandle,
-        sender: AudioSender, released: IsMPSCReleased
-    ) -> Self {
-        Self { buffer_id: format!(
-            "{}b{}", channel_id, handle.uuid()
-        ), handle, sender, released }
-    }
+    is_released: IsMPSCReleased,
 }
 
 impl Drop for TrackData {
     fn drop(&mut self) {
-        self.released.store(true, Ordering::SeqCst)
+        self.is_released.store(true, Ordering::SeqCst)
     }
 }
 
@@ -85,7 +77,7 @@ impl Channel {
                 return return_value;
             };
         };
-        let (tx, rx) = channel::<Vec<u8>>(128);
+        let (tx, rx) = channel(128);
         let value = (
             (tx, Arc::new(RwLock::new(rx))),
             Arc::new(AtomicBool::new(false))
@@ -98,10 +90,11 @@ impl Channel {
     pub fn play(&mut self, source: Input, aampsc: &AcquiredAudioMPSC) -> u128 {
         let handle = self.core.call.play_source(source);
         let id = handle.uuid().as_u128();
-        self.core.tracks.insert(id, TrackData::new(
-            self.id.u64, handle, aampsc.0.0.clone(),
-            aampsc.1.clone()
-        ));
+        self.core.tracks.insert(id, TrackData {
+            channel_id: self.id.u64, handle,
+            sender: aampsc.0.0.clone(),
+            is_released: aampsc.1.clone()
+        });
         id
     }
 }
